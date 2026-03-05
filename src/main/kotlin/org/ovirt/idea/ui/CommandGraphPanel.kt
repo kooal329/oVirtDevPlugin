@@ -182,7 +182,10 @@ class CommandGraphPanel(
         }
     }
 
-    private fun openSelectedCommand() = openCommand(list.selectedValue ?: return)
+    private fun openSelectedCommand() {
+        val selected = list.selectedValue ?: return
+        openCommand(selected)
+    }
 
     private fun openCommand(commandName: String) {
         val info = commandMap[commandName] ?: return
