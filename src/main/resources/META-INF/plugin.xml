@@ -8,6 +8,7 @@
 
     <extensions defaultExtensionNs="com.intellij">
         <projectService serviceImplementation="org.ovirt.idea.index.CommandIndexService"/>
+        <codeInsight.lineMarkerProvider language="JAVA" implementationClass="org.ovirt.idea.gutter.CommandLineMarkerProvider"/>
         <toolWindow
                 id="oVirt Commands"
                 anchor="right"
