@@ -3,13 +3,18 @@ package org.ovirt.idea.index
 import com.intellij.ide.highlighter.JavaFileType
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
+import com.intellij.openapi.fileEditor.FileDocumentManager
+import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiClass
+import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiJavaFile
 import com.intellij.psi.PsiManager
 import com.intellij.psi.search.FileTypeIndex
 import com.intellij.psi.search.GlobalSearchScope
+import com.intellij.psi.search.PsiSearchHelper
+import com.intellij.psi.search.UsageSearchContext
 import com.intellij.psi.util.CachedValue
 import com.intellij.psi.util.CachedValueProvider
 import com.intellij.psi.util.CachedValuesManager
@@ -26,14 +31,10 @@ class CommandIndexService(private val project: Project) {
 
     fun allCommands(): List<CommandInfo> = cachedCommands.value
 
-<<<<<<< codex/analyze-and-fix-project-errors
     fun commandByName(name: String): CommandInfo? {
         val command = allCommands().firstOrNull { it.name == name } ?: return null
         return command.copy(usages = collectUsagesForCommand(command.name))
     }
-=======
-    fun commandByName(name: String): CommandInfo? = allCommands().firstOrNull { it.name == name }
->>>>>>> main
 
     fun commandsUsingParameters(parameterClass: String): List<CommandInfo> {
         return allCommands().filter { it.parametersClass == parameterClass }
@@ -43,7 +44,6 @@ class CommandIndexService(private val project: Project) {
         val scope = GlobalSearchScope.projectScope(project)
         val javaFiles = FileTypeIndex.getFiles(JavaFileType.INSTANCE, scope)
 
-<<<<<<< codex/analyze-and-fix-project-errors
         return javaFiles.mapNotNull { parseCommandSeed(it) }
             .map { seed ->
                 CommandInfo(
@@ -56,25 +56,6 @@ class CommandIndexService(private val project: Project) {
                 )
             }
             .sortedBy { it.name }
-=======
-        val commandSeeds = javaFiles.mapNotNull { parseCommandSeed(it) }
-        if (commandSeeds.isEmpty()) {
-            return emptyList()
-        }
-
-        val usageMap = collectUsages(javaFiles, commandSeeds)
-
-        return commandSeeds.map { seed ->
-            CommandInfo(
-                name = seed.name,
-                qualifiedName = seed.qualifiedName,
-                filePath = seed.filePath,
-                parametersClass = seed.parametersClass,
-                calledCommands = seed.calledCommands,
-                usages = usageMap[seed.name].orEmpty()
-            )
-        }.sortedBy { it.name }
->>>>>>> main
     }
 
     private fun parseCommandSeed(file: VirtualFile): CommandSeed? {
@@ -97,7 +78,38 @@ class CommandIndexService(private val project: Project) {
         )
     }
 
-<<<<<<< codex/analyze-and-fix-project-errors
+    private fun collectUsagesForCommand(commandName: String): Set<UsageLocation> {
+        val scope = GlobalSearchScope.projectScope(project)
+        val results = LinkedHashSet<UsageLocation>()
+        collectUsagesForWord(commandName, scope, results)
+        collectUsagesForWord(commandName.removeSuffix("Command"), scope, results)
+        return results
+    }
+
+    private fun collectUsagesForWord(
+        word: String,
+        scope: GlobalSearchScope,
+        result: MutableSet<UsageLocation>
+    ) {
+        if (word.isBlank()) return
+
+        val searchHelper = PsiSearchHelper.getInstance(project)
+        searchHelper.processElementsWithWord({ element, _ ->
+            ProgressManager.checkCanceled()
+            val location = element.toUsageLocation() ?: return@processElementsWithWord true
+            result.add(location)
+            true
+        }, scope, word, UsageSearchContext.IN_CODE, true)
+    }
+
+    private fun PsiElement.toUsageLocation(): UsageLocation? {
+        val virtualFile = containingFile?.virtualFile ?: return null
+        val document = FileDocumentManager.getInstance().getDocument(virtualFile) ?: return null
+        val lineNumber = document.getLineNumber(textOffset)
+        val lineStart = document.getLineStartOffset(lineNumber)
+        val lineEnd = document.getLineEndOffset(lineNumber)
+        val preview = document.charsSequence.subSequence(lineStart, lineEnd).toString().trim()
+        return UsageLocation(virtualFile.path, lineNumber + 1, preview)
     private fun collectUsagesForCommand(commandName: String): Set<UsageLocation> {
         val scope = GlobalSearchScope.projectScope(project)
         val javaFiles = FileTypeIndex.getFiles(JavaFileType.INSTANCE, scope)
@@ -112,39 +124,6 @@ class CommandIndexService(private val project: Project) {
                 if (isUsage) UsageLocation(file.path, index + 1, line.trim()) else null
             }.toList()
         }.toSet()
-=======
-    private fun collectUsages(
-        javaFiles: Collection<VirtualFile>,
-        seeds: List<CommandSeed>
-    ): Map<String, Set<UsageLocation>> {
-        val actionTypeToCommand = seeds.associateBy { it.name.removeSuffix("Command") }
-        val commandNames = seeds.map { it.name }.toSet()
-        val usages = mutableMapOf<String, MutableSet<UsageLocation>>()
-
-        javaFiles.forEach { file ->
-            val text = runCatching { String(file.contentsToByteArray()) }.getOrDefault("")
-            if (text.isEmpty()) return@forEach
-
-            text.lineSequence().forEachIndexed { index, line ->
-                val lineTrimmed = line.trim()
-                commandNames.forEach { commandName ->
-                    if (line.contains(commandName)) {
-                        usages.getOrPut(commandName) { mutableSetOf() }
-                            .add(UsageLocation(file.path, index + 1, lineTrimmed))
-                    }
-                }
-
-                actionTypeRegex.findAll(line).forEach { match ->
-                    val actionName = match.groupValues[1]
-                    val command = actionTypeToCommand[actionName] ?: return@forEach
-                    usages.getOrPut(command.name) { mutableSetOf() }
-                        .add(UsageLocation(file.path, index + 1, lineTrimmed))
-                }
-            }
-        }
-
-        return usages
->>>>>>> main
     }
 
     private fun isCommandClass(psiClass: PsiClass): Boolean {

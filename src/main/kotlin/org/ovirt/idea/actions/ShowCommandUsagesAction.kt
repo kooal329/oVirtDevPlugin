@@ -21,13 +21,22 @@ class ShowCommandUsagesAction : AnAction() {
                 return@onDone
             }
 
+            val sortedUsages = command.usages.sortedWith(compareBy({ it.filePath }, { it.line }))
+            val cappedUsages = sortedUsages.take(MAX_LINES_IN_DIALOG)
             val message = buildString {
                 append("$commandName используется в:\n\n")
-                command.usages.sortedBy { it.filePath }.forEach {
+                cappedUsages.forEach {
                     append("${it.filePath}:${it.line}\n")
+                }
+                if (sortedUsages.size > MAX_LINES_IN_DIALOG) {
+                    append("\nПоказаны первые $MAX_LINES_IN_DIALOG из ${sortedUsages.size} результатов")
                 }
             }
             Messages.showInfoMessage(project, message, "Show Command Usages")
         }
+    }
+
+    companion object {
+        private const val MAX_LINES_IN_DIALOG = 500
     }
 }
