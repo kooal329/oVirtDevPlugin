@@ -10,16 +10,20 @@ class ShowCommandGraphAction : AnAction() {
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
         val commandName = e.selectedClassName()
-        val toolWindow = ToolWindowManager.getInstance(project).getToolWindow("oVirt Commands") ?: return
-        toolWindow.show()
 
-        val panel = CommandGraphPanel(
-            project,
-            CommandIndexService.getInstance(project),
-            commandName
+        runInBackground(
+            project = project,
+            title = "Building command graph",
+            compute = { CommandGraphPanel(project, CommandIndexService.getInstance(project), commandName) },
+            onDone = { panel ->
+                val toolWindow = ToolWindowManager.getInstance(project).getToolWindow("oVirt Commands")
+                if (toolWindow != null) {
+                    toolWindow.show()
+                    toolWindow.contentManager.removeAllContents(true)
+                    val content = toolWindow.contentManager.factory.createContent(panel, "Command Graph", false)
+                    toolWindow.contentManager.addContent(content)
+                }
+            }
         )
-        toolWindow.contentManager.removeAllContents(true)
-        val content = toolWindow.contentManager.factory.createContent(panel, "Command Graph", false)
-        toolWindow.contentManager.addContent(content)
     }
 }
