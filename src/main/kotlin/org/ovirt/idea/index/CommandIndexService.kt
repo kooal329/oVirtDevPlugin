@@ -131,6 +131,7 @@ class CommandIndexService(private val project: Project) {
             Regex("runInternalAction\\s*\\(\\s*VdcActionType\\.([A-Za-z0-9_]+)")
         private val commandParametersRegex =
             Regex("extends\\s+CommandBase\\s*<\\s*([A-Za-z0-9_]+)\\s*>")
+        private val actionTypeRegex = Regex("VdcActionType\\.([A-Za-z0-9_]+)")
 
         fun getInstance(project: Project): CommandIndexService = project.service()
     }
