@@ -29,8 +29,8 @@ class CommandGraphPanel(
     rootCommand: String?
 ) : JPanel(BorderLayout()) {
 
-    private val commands = service.allCommands().sortedBy { it.name }
-    private val commandMap = commands.associateBy { it.name }
+    private val commands: List<CommandInfo> = service.allCommands().sortedBy { it.name }
+    private val commandMap: Map<String, CommandInfo> = commands.associateBy { it.name }
     private val listModel = DefaultListModel<String>()
     private val list = JBList(listModel)
     private val details = JEditorPane("text/html", "")
@@ -39,34 +39,41 @@ class CommandGraphPanel(
         val search = SearchTextField()
         details.isEditable = false
 
-        commands.forEach { listModel.addElement(it.name) }
+        commands.forEach { cmd -> listModel.addElement(cmd.name) }
 
         search.textEditor.document.addDocumentListener(object : DocumentListener {
-            override fun insertUpdate(e: DocumentEvent?) = refreshList(search.text)
-            override fun removeUpdate(e: DocumentEvent?) = refreshList(search.text)
-            override fun changedUpdate(e: DocumentEvent?) = refreshList(search.text)
+            override fun insertUpdate(e: DocumentEvent?) {
+                refreshList(search.text)
+            }
+
+            override fun removeUpdate(e: DocumentEvent?) {
+                refreshList(search.text)
+            }
+
+            override fun changedUpdate(e: DocumentEvent?) {
+                refreshList(search.text)
+            }
         })
 
-        details.addHyperlinkListener { event ->
+        details.addHyperlinkListener { event: HyperlinkEvent ->
             if (event.eventType == HyperlinkEvent.EventType.ACTIVATED) {
                 val commandName = event.description.removePrefix("command://")
                 list.setSelectedValue(commandName, true)
                 openCommand(commandName)
             }
         }
-        val command = commandMap[commandName] ?: run {
-            details.text = "<html><body>Command not found: $commandName</body></html>"
-            return
-        }
-        details.text = buildDetailsHtml(command)
-    }
 
-        list.addListSelectionListener {
-            if (!it.valueIsAdjusting) renderCommand(list.selectedValue)
+        list.addListSelectionListener { evt ->
+            if (!evt.valueIsAdjusting) {
+                renderCommand(list.selectedValue)
+            }
         }
+
         list.addMouseListener(object : MouseAdapter() {
             override fun mouseClicked(e: MouseEvent) {
-                if (e.clickCount == 2) openSelectedCommand()
+                if (e.clickCount == 2) {
+                    openSelectedCommand()
+                }
             }
         })
 
@@ -75,19 +82,29 @@ class CommandGraphPanel(
             override fun actionPerformed(e: java.awt.event.ActionEvent?) {
                 val selected = list.selectedValuesList
                 if (selected.isNotEmpty()) {
-                    java.awt.Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(selected.joinToString("\n")), null)
+                    java.awt.Toolkit.getDefaultToolkit().systemClipboard.setContents(
+                        StringSelection(selected.joinToString("\n")),
+                        null
+                    )
                 }
             }
         })
 
-        val leftPanel = JPanel(BorderLayout()).apply {
-            add(search, BorderLayout.NORTH)
-            add(JBScrollPane(list), BorderLayout.CENTER)
-        }
-        val split = JSplitPane(JSplitPane.HORIZONTAL_SPLIT, leftPanel, JBScrollPane(details)).apply { resizeWeight = 0.35 }
+        val leftPanel = JPanel(BorderLayout())
+        leftPanel.add(search, BorderLayout.NORTH)
+        leftPanel.add(JBScrollPane(list), BorderLayout.CENTER)
+
+        val rightPanel = JBScrollPane(details)
+        val split = JSplitPane(JSplitPane.HORIZONTAL_SPLIT, leftPanel, rightPanel)
+        split.resizeWeight = 0.35
         add(split, BorderLayout.CENTER)
 
-        val initial = rootCommand?.takeIf { commandMap.containsKey(it) } ?: listModel.elements().toList().firstOrNull()
+        val initial = if (rootCommand != null && commandMap.containsKey(rootCommand)) {
+            rootCommand
+        } else {
+            listModel.elements().toList().firstOrNull()
+        }
+
         if (initial != null) {
             list.setSelectedValue(initial, true)
             renderCommand(initial)
@@ -103,7 +120,10 @@ class CommandGraphPanel(
             .map { it.name }
             .filter { normalized.isEmpty() || it.lowercase().contains(normalized) }
             .forEach { listModel.addElement(it) }
-        if (listModel.size() > 0) list.selectedIndex = 0
+
+        if (listModel.size() > 0) {
+            list.selectedIndex = 0
+        }
     }
 
     private fun renderCommand(commandName: String?) {
@@ -111,21 +131,34 @@ class CommandGraphPanel(
             details.text = "<html><body>Select command</body></html>"
             return
         }
-        val command = commandMap[commandName] ?: run {
+
+        val command = commandMap[commandName]
+        if (command == null) {
             details.text = "<html><body>Command not found: ${escape(commandName)}</body></html>"
             return
         }
+    }
+
         details.text = buildDetailsHtml(command)
     }
 
     private fun buildDetailsHtml(command: CommandInfo): String {
         val graphLines = mutableListOf(escape(command.name))
-        renderGraphNode(command.name, 1, mutableListOf(command.name), mutableSetOf(command.name), graphLines, NodeBudget(MAX_GRAPH_LINES))
+        renderGraphNode(
+            commandName = command.name,
+            depth = 1,
+            currentPath = mutableListOf(command.name),
+            globallyRendered = mutableSetOf(command.name),
+            graphLines = graphLines,
+            budget = NodeBudget(MAX_GRAPH_LINES)
+        )
 
         val callsHtml = if (command.calledCommands.isEmpty()) {
             "<li><i>none</i></li>"
         } else {
-            command.calledCommands.sorted().joinToString("") { called -> "<li>${link(called)}</li>" }
+            command.calledCommands.sorted().joinToString(separator = "") { called ->
+                "<li>${link(called)}</li>"
+            }
         }
 
         return """
@@ -166,8 +199,8 @@ class CommandGraphPanel(
                 called in globallyRendered -> graphLines += "$prefix${escape(called)}  ↪ already shown"
                 else -> {
                     graphLines += "$prefix${link(called)}"
-                    currentPath += called
-                    globallyRendered += called
+                    currentPath.add(called)
+                    globallyRendered.add(called)
                     renderGraphNode(called, depth + 1, currentPath, globallyRendered, graphLines, budget)
                     currentPath.removeAt(currentPath.lastIndex)
                 }
@@ -191,8 +224,13 @@ class CommandGraphPanel(
         return if (idx >= 0) filePath.substring(idx + 1) else filePath
     }
 
-    private fun escape(s: String): String = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    private fun link(command: String): String = "<a href='command://$command'>${escape(command)}</a>"
+    private fun escape(s: String): String {
+        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    }
+
+    private fun link(command: String): String {
+        return "<a href='command://$command'>${escape(command)}</a>"
+    }
 
     private data class NodeBudget(var left: Int) {
         fun take(): Boolean {
@@ -204,7 +242,9 @@ class CommandGraphPanel(
 
     private fun <T> java.util.Enumeration<T>.toList(): List<T> {
         val result = mutableListOf<T>()
-        while (hasMoreElements()) result.add(nextElement())
+        while (hasMoreElements()) {
+            result.add(nextElement())
+        }
         return result
     }
 
