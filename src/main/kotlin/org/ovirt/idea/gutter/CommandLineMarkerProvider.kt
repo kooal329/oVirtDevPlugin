@@ -2,7 +2,7 @@ package org.ovirt.idea.gutter
 
 import com.intellij.codeInsight.daemon.LineMarkerInfo
 import com.intellij.codeInsight.daemon.LineMarkerProvider
-import com.intellij.codeInsight.daemon.NavigationGutterIconBuilder
+import com.intellij.codeInsight.navigation.NavigationGutterIconBuilder
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.DumbService
