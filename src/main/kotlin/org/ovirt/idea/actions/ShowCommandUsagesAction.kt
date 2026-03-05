@@ -4,6 +4,7 @@ import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.ui.Messages
 import org.ovirt.idea.index.CommandIndexService
+import org.ovirt.idea.ui.CommandUsagesDialog
 
 class ShowCommandUsagesAction : AnAction() {
     override fun actionPerformed(e: AnActionEvent) {
@@ -23,30 +24,23 @@ class ShowCommandUsagesAction : AnAction() {
                     return@onDone
                 }
 
-                val sanitizedUsages = command.usages.mapNotNull { usage ->
-                    runCatching {
-                        usage.filePath
-                        usage
-                    }.getOrNull()
+                val usages = command.usages
+                    .mapNotNull { usage ->
+                        runCatching {
+                            usage.filePath
+                            usage
+                        }.getOrNull()
+                    }
+                    .distinctBy { Triple(it.filePath, it.line, it.preview) }
+                    .sortedWith(compareBy({ it.filePath }, { it.line }))
+
+                if (usages.isEmpty()) {
+                    Messages.showInfoMessage(project, "Usages not found for $commandName", "Show Command Usages")
+                    return@onDone
                 }
 
-                val sortedUsages = sanitizedUsages.sortedWith(compareBy({ it.filePath }, { it.line }))
-                val cappedUsages = sortedUsages.take(MAX_LINES_IN_DIALOG)
-                val message = buildString {
-                    append("$commandName используется в:\n\n")
-                    cappedUsages.forEach {
-                        append("${it.filePath}:${it.line}\n")
-                    }
-                    if (sortedUsages.size > MAX_LINES_IN_DIALOG) {
-                        append("\nПоказаны первые $MAX_LINES_IN_DIALOG из ${sortedUsages.size} результатов")
-                    }
-                }
-                Messages.showInfoMessage(project, message, "Show Command Usages")
+                CommandUsagesDialog(project, commandName, usages, project.basePath).show()
             }
         )
-    }
-
-    companion object {
-        private const val MAX_LINES_IN_DIALOG = 500
     }
 }

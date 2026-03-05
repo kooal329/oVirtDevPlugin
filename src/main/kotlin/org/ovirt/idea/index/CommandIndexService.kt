@@ -33,7 +33,12 @@ class CommandIndexService(private val project: Project) {
 
     fun commandByName(name: String): CommandInfo? {
         val command = allCommands().firstOrNull { it.name == name } ?: return null
-        return command.copy(usages = collectUsagesForCommand(command.name))
+        return command.copy(usages = collectUsagesForCommand(command.name, command.filePath))
+    }
+
+    fun commandByActionName(actionName: String): CommandInfo? {
+        val commandName = actionName.removeSuffix("Command") + "Command"
+        return allCommands().firstOrNull { it.name == commandName }
     }
 
     fun commandsUsingParameters(parameterClass: String): List<CommandInfo> {
@@ -84,7 +89,6 @@ class CommandIndexService(private val project: Project) {
     }
 
     private fun resolveCommandClassNames(seeds: List<CommandSeed>): Set<String> {
-        val byName = seeds.associateBy { it.name }
         val result = mutableSetOf<String>()
 
         seeds.forEach { seed ->
@@ -99,8 +103,8 @@ class CommandIndexService(private val project: Project) {
             seeds.forEach { seed ->
                 if (seed.name in result) return@forEach
                 val superName = seed.superClassName ?: return@forEach
-                if (superName in result || byName.containsKey(superName) && superName in result) {
-                    if (result.add(seed.name)) changed = true
+                if (superName in result && result.add(seed.name)) {
+                    changed = true
                 }
             }
         }
@@ -116,20 +120,35 @@ class CommandIndexService(private val project: Project) {
         return noGenerics.substringAfterLast('.')
     }
 
-    private fun collectUsagesForCommand(commandName: String): Set<UsageLocation> {
+    private fun collectUsagesForCommand(commandName: String, commandFilePath: String): Set<UsageLocation> {
         return ReadAction.compute<Set<UsageLocation>, RuntimeException> {
             val scope = GlobalSearchScope.projectScope(project)
             val results = LinkedHashSet<UsageLocation>()
-            collectUsagesForWord(commandName, scope, results)
-            collectUsagesForWord(commandName.removeSuffix("Command"), scope, results)
+            val actionName = commandName.removeSuffix("Command")
+            collectCommandCallUsages(actionName, scope, commandFilePath, results)
             results
+        }
+    }
+
+    private fun collectCommandCallUsages(
+        actionName: String,
+        scope: GlobalSearchScope,
+        commandFilePath: String,
+        result: MutableSet<UsageLocation>
+    ) {
+        collectUsagesForWord(actionName, scope) { location ->
+            if (location.filePath == commandFilePath) return@collectUsagesForWord
+            val preview = location.preview
+            if (preview.contains("VdcActionType.$actionName") || preview.contains("ActionType.$actionName")) {
+                result.add(location)
+            }
         }
     }
 
     private fun collectUsagesForWord(
         word: String,
         scope: GlobalSearchScope,
-        result: MutableSet<UsageLocation>
+        onLocation: (UsageLocation) -> Unit
     ) {
         if (word.isBlank()) return
 
@@ -137,7 +156,7 @@ class CommandIndexService(private val project: Project) {
         searchHelper.processElementsWithWord({ element, _ ->
             ProgressManager.checkCanceled()
             val location = element.toUsageLocation() ?: return@processElementsWithWord true
-            result.add(location)
+            onLocation(location)
             true
         }, scope, word, UsageSearchContext.IN_CODE, true)
     }
