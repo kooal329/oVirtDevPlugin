@@ -129,9 +129,9 @@ class CommandGraphPanel(
                 command.calledCommands.sorted().forEach { appendLine("  - $it") }
             }
             appendLine()
-            appendLine("Call Graph:")
+            appendLine("Call Graph (cycle-safe):")
             appendLine(command.name)
-            renderNode(command.name, 1, mutableSetOf(), this)
+            renderNode(command.name, 1, mutableListOf(command.name), this)
         }
     }
 
@@ -140,12 +140,17 @@ class CommandGraphPanel(
         return if (idx >= 0) filePath.substring(idx + 1) else filePath
     }
 
-    private fun renderNode(commandName: String, depth: Int, seen: MutableSet<String>, out: StringBuilder) {
-        if (!seen.add(commandName)) return
+    private fun renderNode(commandName: String, depth: Int, path: MutableList<String>, out: StringBuilder) {
         val node = commandMap[commandName] ?: return
         node.calledCommands.sorted().forEach { called ->
+            if (called in path) {
+                out.append("  ".repeat(depth)).append("└─ ").append(called).appendLine("  ↺ cycle")
+                return@forEach
+            }
             out.append("  ".repeat(depth)).append("└─ ").appendLine(called)
-            renderNode(called, depth + 1, seen, out)
+            path.add(called)
+            renderNode(called, depth + 1, path, out)
+            path.removeAt(path.lastIndex)
         }
     }
 

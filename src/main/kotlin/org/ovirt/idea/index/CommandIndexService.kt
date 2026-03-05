@@ -37,8 +37,17 @@ class CommandIndexService(private val project: Project) {
     }
 
     fun commandByActionName(actionName: String): CommandInfo? {
-        val commandName = actionName.removeSuffix("Command") + "Command"
-        return allCommands().firstOrNull { it.name == commandName }
+        val candidates = listOf(
+            actionName,
+            actionName.removeSuffix("Command") + "Command",
+            actionName.removeSuffix("Command") + "VDSCommand",
+            actionName.removeSuffix("VDSCommand") + "VDSCommand",
+            actionName.removeSuffix("Command") + "VdsCommand",
+            actionName.removeSuffix("VDSCommand") + "VdsCommand"
+        ).distinct()
+
+        val commands = allCommands()
+        return candidates.asSequence().mapNotNull { candidate -> commands.firstOrNull { it.name == candidate } }.firstOrNull()
     }
 
     fun commandsUsingParameters(parameterClass: String): List<CommandInfo> {
@@ -75,7 +84,7 @@ class CommandIndexService(private val project: Project) {
 
         val called = actionCallRegex.findAll(text)
             .mapNotNull { it.groupValues.getOrNull(1) }
-            .map { it.removeSuffix("Command") + "Command" }
+            .map { actionToCommandName(it) }
             .toSet()
 
         return CommandSeed(
@@ -122,17 +131,39 @@ class CommandIndexService(private val project: Project) {
     }
 
     private fun extractParametersClass(text: String): String? {
+        val typeBounds = extractTypeBounds(text)
         val extendsToken = classExtendsRegex.find(text)?.groupValues?.getOrNull(1) ?: return null
         val genericToken = extendsToken.substringAfter('<', "").substringBeforeLast('>', "").trim()
         if (genericToken.isBlank()) return null
-        return genericToken.substringAfterLast('.').substringAfterLast('?').trim()
+
+        val cleaned = genericToken.substringAfter("?").trim().substringAfterLast('.').trim()
+        return typeBounds[cleaned] ?: cleaned.ifBlank { null }
+    }
+
+    private fun extractTypeBounds(text: String): Map<String, String> {
+        val declaration = classTypeParametersRegex.find(text)?.groupValues?.getOrNull(1) ?: return emptyMap()
+        if (declaration.isBlank()) return emptyMap()
+
+        return declaration.split(',')
+            .map { it.trim() }
+            .mapNotNull { entry ->
+                val parts = entry.split("extends").map { it.trim() }
+                if (parts.size != 2) return@mapNotNull null
+                val typeVar = parts[0].substringAfterLast(' ').trim()
+                val bound = parts[1].substringAfterLast('.').trim()
+                if (typeVar.isBlank() || bound.isBlank()) null else typeVar to bound
+            }
+            .toMap()
     }
 
     private fun collectUsagesForCommand(commandName: String, commandFilePath: String): Set<UsageLocation> {
         return ReadAction.compute<Set<UsageLocation>, RuntimeException> {
             val scope = GlobalSearchScope.projectScope(project)
             val results = LinkedHashSet<UsageLocation>()
-            val actionName = commandName.removeSuffix("Command")
+            val actionName = commandName
+                .removeSuffix("Command")
+                .removeSuffix("VDSCommand")
+                .removeSuffix("VdsCommand")
             collectCommandCallUsages(actionName, scope, commandFilePath, results)
             results
         }
@@ -147,7 +178,10 @@ class CommandIndexService(private val project: Project) {
         collectUsagesForWord(actionName, scope) { location ->
             if (location.filePath == commandFilePath) return@collectUsagesForWord
             val preview = location.preview
-            if (preview.contains("VdcActionType.$actionName") || preview.contains("ActionType.$actionName")) {
+            if (preview.contains("VdcActionType.$actionName") ||
+                preview.contains("ActionType.$actionName") ||
+                preview.contains("VDSCommandType.$actionName")
+            ) {
                 result.add(location)
             }
         }
@@ -175,6 +209,13 @@ class CommandIndexService(private val project: Project) {
         return UsageLocation(virtualFile.path, lineNumber + 1, preview)
     }
 
+    private fun actionToCommandName(action: String): String {
+        return when {
+            action.endsWith("VDSCommand") || action.endsWith("VdsCommand") || action.endsWith("Command") -> action
+            else -> action + "Command"
+        }
+    }
+
     private data class CommandSeed(
         val name: String,
         val qualifiedName: String,
@@ -186,9 +227,11 @@ class CommandIndexService(private val project: Project) {
 
     companion object {
         private val actionCallRegex =
-            Regex("(?:runInternalAction\\s*\\(\\s*)?(?:VdcActionType|ActionType)\\.([A-Za-z0-9_]+)")
+            Regex("(?:runInternalAction\\s*\\(\\s*)?(?:VdcActionType|ActionType|VDSCommandType)\\.([A-Za-z0-9_]+)")
         private val classExtendsRegex =
             Regex("class\\s+[A-Za-z0-9_]+(?:\\s*<[^>]+>)?\\s+extends\\s+([A-Za-z0-9_$.<>?,\\s]+)")
+        private val classTypeParametersRegex =
+            Regex("class\\s+[A-Za-z0-9_]+\\s*<([^>]+)>")
 
         fun getInstance(project: Project): CommandIndexService = project.service()
     }
