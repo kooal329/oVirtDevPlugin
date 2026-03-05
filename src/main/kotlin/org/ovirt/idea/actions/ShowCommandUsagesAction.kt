@@ -13,18 +13,21 @@ class ShowCommandUsagesAction : AnAction() {
             return
         }
 
-        val command = CommandIndexService.getInstance(project).commandByName(commandName)
-        if (command == null) {
-            Messages.showInfoMessage(project, "Selected class is not indexed as command", "oVirt Commands")
-            return
-        }
-
-        val message = buildString {
-            append("$commandName используется в:\n\n")
-            command.usages.sortedBy { it.filePath }.forEach {
-                append("${it.filePath}:${it.line}\n")
+        runInBackground(project, "Searching command usages") {
+            CommandIndexService.getInstance(project).commandByName(commandName)
+        } onDone@{ command ->
+            if (command == null) {
+                Messages.showInfoMessage(project, "Selected class is not indexed as command", "oVirt Commands")
+                return@onDone
             }
+
+            val message = buildString {
+                append("$commandName используется в:\n\n")
+                command.usages.sortedBy { it.filePath }.forEach {
+                    append("${it.filePath}:${it.line}\n")
+                }
+            }
+            Messages.showInfoMessage(project, message, "Show Command Usages")
         }
-        Messages.showInfoMessage(project, message, "Show Command Usages")
     }
 }

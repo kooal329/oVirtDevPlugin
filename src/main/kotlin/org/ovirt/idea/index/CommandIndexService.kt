@@ -26,7 +26,14 @@ class CommandIndexService(private val project: Project) {
 
     fun allCommands(): List<CommandInfo> = cachedCommands.value
 
+<<<<<<< codex/analyze-and-fix-project-errors
+    fun commandByName(name: String): CommandInfo? {
+        val command = allCommands().firstOrNull { it.name == name } ?: return null
+        return command.copy(usages = collectUsagesForCommand(command.name))
+    }
+=======
     fun commandByName(name: String): CommandInfo? = allCommands().firstOrNull { it.name == name }
+>>>>>>> main
 
     fun commandsUsingParameters(parameterClass: String): List<CommandInfo> {
         return allCommands().filter { it.parametersClass == parameterClass }
@@ -36,6 +43,20 @@ class CommandIndexService(private val project: Project) {
         val scope = GlobalSearchScope.projectScope(project)
         val javaFiles = FileTypeIndex.getFiles(JavaFileType.INSTANCE, scope)
 
+<<<<<<< codex/analyze-and-fix-project-errors
+        return javaFiles.mapNotNull { parseCommandSeed(it) }
+            .map { seed ->
+                CommandInfo(
+                    name = seed.name,
+                    qualifiedName = seed.qualifiedName,
+                    filePath = seed.filePath,
+                    parametersClass = seed.parametersClass,
+                    calledCommands = seed.calledCommands,
+                    usages = emptySet()
+                )
+            }
+            .sortedBy { it.name }
+=======
         val commandSeeds = javaFiles.mapNotNull { parseCommandSeed(it) }
         if (commandSeeds.isEmpty()) {
             return emptyList()
@@ -53,6 +74,7 @@ class CommandIndexService(private val project: Project) {
                 usages = usageMap[seed.name].orEmpty()
             )
         }.sortedBy { it.name }
+>>>>>>> main
     }
 
     private fun parseCommandSeed(file: VirtualFile): CommandSeed? {
@@ -75,6 +97,22 @@ class CommandIndexService(private val project: Project) {
         )
     }
 
+<<<<<<< codex/analyze-and-fix-project-errors
+    private fun collectUsagesForCommand(commandName: String): Set<UsageLocation> {
+        val scope = GlobalSearchScope.projectScope(project)
+        val javaFiles = FileTypeIndex.getFiles(JavaFileType.INSTANCE, scope)
+        val actionTypeName = commandName.removeSuffix("Command")
+
+        return javaFiles.flatMap { file ->
+            val text = runCatching { String(file.contentsToByteArray()) }.getOrDefault("")
+            if (text.isEmpty()) return@flatMap emptyList()
+
+            text.lineSequence().mapIndexedNotNull { index, line ->
+                val isUsage = line.contains(commandName) || line.contains("VdcActionType.$actionTypeName")
+                if (isUsage) UsageLocation(file.path, index + 1, line.trim()) else null
+            }.toList()
+        }.toSet()
+=======
     private fun collectUsages(
         javaFiles: Collection<VirtualFile>,
         seeds: List<CommandSeed>
@@ -106,6 +144,7 @@ class CommandIndexService(private val project: Project) {
         }
 
         return usages
+>>>>>>> main
     }
 
     private fun isCommandClass(psiClass: PsiClass): Boolean {

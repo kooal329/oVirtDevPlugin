@@ -8,29 +8,36 @@ import org.ovirt.idea.index.CommandIndexService
 class QuickFindCommandAction : AnAction() {
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
-        val commands = CommandIndexService.getInstance(project).allCommands().map { it.name }
-        if (commands.isEmpty()) {
-            Messages.showInfoMessage(project, "Команды не найдены", "Find oVirt Command")
-            return
-        }
 
-        val selected = Messages.showEditableChooseDialog(
-            "Выберите команду",
-            "Find oVirt Command",
-            null,
-            commands.toTypedArray(),
-            commands.firstOrNull(),
-            null
-        )
-
-        if (selected != null) {
-            val command = CommandIndexService.getInstance(project).commandByName(selected)
-            val message = buildString {
-                append("${command?.name}\n")
-                append("Parameters: ${command?.parametersClass ?: "n/a"}\n")
-                append("Calls: ${command?.calledCommands?.joinToString() ?: "n/a"}")
+        runInBackground(project, "Loading oVirt commands") {
+            CommandIndexService.getInstance(project).allCommands().map { it.name }
+        } onDone@{ commands ->
+            if (commands.isEmpty()) {
+                Messages.showInfoMessage(project, "Команды не найдены", "Find oVirt Command")
+                return@onDone
             }
-            Messages.showInfoMessage(project, message, "Command Inspector")
+
+            val selected = Messages.showEditableChooseDialog(
+                "Выберите команду",
+                "Find oVirt Command",
+                null,
+                commands.toTypedArray(),
+                commands.firstOrNull(),
+                null
+            )
+
+            if (selected != null) {
+                runInBackground(project, "Loading command details") {
+                    CommandIndexService.getInstance(project).commandByName(selected)
+                } onDone@{ command ->
+                    val message = buildString {
+                        append("${command?.name}\n")
+                        append("Parameters: ${command?.parametersClass ?: "n/a"}\n")
+                        append("Calls: ${command?.calledCommands?.joinToString() ?: "n/a"}")
+                    }
+                    Messages.showInfoMessage(project, message, "Command Inspector")
+                }
+            }
         }
     }
 }
