@@ -137,6 +137,7 @@ class CommandGraphPanel(
             details.text = "<html><body>Command not found: ${escape(commandName)}</body></html>"
             return
         }
+    }
 
         details.text = buildDetailsHtml(command)
     }
