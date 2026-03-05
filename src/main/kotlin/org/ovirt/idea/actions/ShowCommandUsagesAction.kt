@@ -23,7 +23,14 @@ class ShowCommandUsagesAction : AnAction() {
                     return@onDone
                 }
 
-                val sortedUsages = command.usages.sortedWith(compareBy({ it.filePath }, { it.line }))
+                val sanitizedUsages = command.usages.mapNotNull { usage ->
+                    runCatching {
+                        usage.filePath
+                        usage
+                    }.getOrNull()
+                }
+
+                val sortedUsages = sanitizedUsages.sortedWith(compareBy({ it.filePath }, { it.line }))
                 val cappedUsages = sortedUsages.take(MAX_LINES_IN_DIALOG)
                 val message = buildString {
                     append("$commandName используется в:\n\n")
