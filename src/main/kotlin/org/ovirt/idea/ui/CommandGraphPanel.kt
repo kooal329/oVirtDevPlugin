@@ -129,6 +129,10 @@ class CommandGraphPanel(
             command.calledCommands.sorted().joinToString("") { called ->
                 "<li>${link(called)}</li>"
             }
+            appendLine()
+            appendLine("Call Graph (cycle-safe):")
+            appendLine(command.name)
+            renderNode(command.name, 1, mutableListOf(command.name), this)
         }
 
         return """
