@@ -55,7 +55,7 @@ class CommandGraphPanel(
             }
         })
 
-        details.addHyperlinkListener { event: HyperlinkEvent ->
+        details.addHyperlinkListener { event ->
             if (event.eventType == HyperlinkEvent.EventType.ACTIVATED) {
                 val commandName = event.description.removePrefix("command://")
                 list.setSelectedValue(commandName, true)
@@ -94,8 +94,7 @@ class CommandGraphPanel(
         leftPanel.add(search, BorderLayout.NORTH)
         leftPanel.add(JBScrollPane(list), BorderLayout.CENTER)
 
-        val rightPanel = JBScrollPane(details)
-        val split = JSplitPane(JSplitPane.HORIZONTAL_SPLIT, leftPanel, rightPanel)
+        val split = JSplitPane(JSplitPane.HORIZONTAL_SPLIT, leftPanel, JBScrollPane(details))
         split.resizeWeight = 0.35
         add(split, BorderLayout.CENTER)
 
@@ -137,7 +136,6 @@ class CommandGraphPanel(
             details.text = "<html><body>Command not found: ${escape(commandName)}</body></html>"
             return
         }
-    }
 
         details.text = buildDetailsHtml(command)
     }
@@ -161,19 +159,19 @@ class CommandGraphPanel(
             }
         }
 
-        return """
-            <html><body style='font-family:Segoe UI, sans-serif;'>
-            <h2>oVirt Command Inspector</h2>
-            <p><b>Command:</b> ${escape(command.name)}<br/>
-               <b>Parameter:</b> ${escape(command.parametersClass ?: "n/a")}<br/>
-               <b>File:</b> ${escape(toRelativeSrcPath(command.filePath))}<br/>
-               <b>Direct calls:</b> ${command.calledCommands.size}</p>
-            <h3>Calls</h3>
-            <ul>$callsHtml</ul>
-            <h3>Call Graph (cycle-safe, capped)</h3>
-            <pre>${graphLines.joinToString("\n")}</pre>
-            </body></html>
-        """.trimIndent()
+        val sb = StringBuilder()
+        sb.append("<html><body style='font-family:Segoe UI, sans-serif;'>")
+        sb.append("<h2>oVirt Command Inspector</h2>")
+        sb.append("<p><b>Command:</b> ").append(escape(command.name)).append("<br/>")
+        sb.append("<b>Parameter:</b> ").append(escape(command.parametersClass ?: "n/a")).append("<br/>")
+        sb.append("<b>File:</b> ").append(escape(toRelativeSrcPath(command.filePath))).append("<br/>")
+        sb.append("<b>Direct calls:</b> ").append(command.calledCommands.size).append("</p>")
+        sb.append("<h3>Calls</h3>")
+        sb.append("<ul>").append(callsHtml).append("</ul>")
+        sb.append("<h3>Call Graph (cycle-safe, capped)</h3>")
+        sb.append("<pre>").append(graphLines.joinToString("\n")).append("</pre>")
+        sb.append("</body></html>")
+        return sb.toString()
     }
 
     private fun renderGraphNode(
@@ -186,17 +184,17 @@ class CommandGraphPanel(
     ) {
         if (!budget.take()) return
         if (depth > MAX_GRAPH_DEPTH) {
-            graphLines += "${"  ".repeat(depth)}└─ ... (depth limit)"
+            graphLines += "${"  ".repeat(depth)}|- ... (depth limit)"
             return
         }
 
         val node = commandMap[commandName] ?: return
         node.calledCommands.sorted().forEach { called ->
             if (!budget.take()) return
-            val prefix = "  ".repeat(depth) + "└─ "
+            val prefix = "  ".repeat(depth) + "|- "
             when {
-                called in currentPath -> graphLines += "$prefix${escape(called)}  ↺ cycle"
-                called in globallyRendered -> graphLines += "$prefix${escape(called)}  ↪ already shown"
+                called in currentPath -> graphLines += "$prefix${escape(called)}  [cycle]"
+                called in globallyRendered -> graphLines += "$prefix${escape(called)}  [already shown]"
                 else -> {
                     graphLines += "$prefix${link(called)}"
                     currentPath.add(called)
