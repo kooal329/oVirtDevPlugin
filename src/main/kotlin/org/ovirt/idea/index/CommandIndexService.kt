@@ -7,7 +7,6 @@ import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
-import com.intellij.psi.PsiClass
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiJavaFile
 import com.intellij.psi.PsiManager
@@ -60,10 +59,11 @@ class CommandIndexService(private val project: Project) {
 
     private fun parseCommandSeed(file: VirtualFile): CommandSeed? {
         val psiFile = PsiManager.getInstance(project).findFile(file) as? PsiJavaFile ?: return null
-        val psiClass = psiFile.classes.firstOrNull() ?: return null
-        if (!isCommandClass(psiClass)) return null
-
         val text = psiFile.text
+
+        if (!isCommandClassText(text)) return null
+
+        val psiClass = psiFile.classes.firstOrNull() ?: return null
         val called = runInternalActionRegex.findAll(text)
             .mapNotNull { it.groupValues.getOrNull(1) }
             .map { it.removeSuffix("Command") + "Command" }
@@ -76,6 +76,10 @@ class CommandIndexService(private val project: Project) {
             parametersClass = commandParametersRegex.find(text)?.groupValues?.getOrNull(1),
             calledCommands = called
         )
+    }
+
+    private fun isCommandClassText(text: String): Boolean {
+        return commandBaseRegex.containsMatchIn(text)
     }
 
     private fun collectUsagesForCommand(commandName: String): Set<UsageLocation> {
@@ -112,12 +116,6 @@ class CommandIndexService(private val project: Project) {
         return UsageLocation(virtualFile.path, lineNumber + 1, preview)
     }
 
-    private fun isCommandClass(psiClass: PsiClass): Boolean {
-        return psiClass.supers.any {
-            it.name?.contains("CommandBase") == true || it.qualifiedName?.contains("CommandBase") == true
-        }
-    }
-
     private data class CommandSeed(
         val name: String,
         val qualifiedName: String,
@@ -131,7 +129,8 @@ class CommandIndexService(private val project: Project) {
             Regex("runInternalAction\\s*\\(\\s*VdcActionType\\.([A-Za-z0-9_]+)")
         private val commandParametersRegex =
             Regex("extends\\s+CommandBase\\s*<\\s*([A-Za-z0-9_]+)\\s*>")
-        private val actionTypeRegex = Regex("VdcActionType\\.([A-Za-z0-9_]+)")
+        private val commandBaseRegex =
+            Regex("extends\\s+[A-Za-z0-9_.]*CommandBase\\s*<", RegexOption.MULTILINE)
 
         fun getInstance(project: Project): CommandIndexService = project.service()
     }
