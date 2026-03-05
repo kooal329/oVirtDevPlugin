@@ -110,20 +110,6 @@ class CommandIndexService(private val project: Project) {
         val lineEnd = document.getLineEndOffset(lineNumber)
         val preview = document.charsSequence.subSequence(lineStart, lineEnd).toString().trim()
         return UsageLocation(virtualFile.path, lineNumber + 1, preview)
-    private fun collectUsagesForCommand(commandName: String): Set<UsageLocation> {
-        val scope = GlobalSearchScope.projectScope(project)
-        val javaFiles = FileTypeIndex.getFiles(JavaFileType.INSTANCE, scope)
-        val actionTypeName = commandName.removeSuffix("Command")
-
-        return javaFiles.flatMap { file ->
-            val text = runCatching { String(file.contentsToByteArray()) }.getOrDefault("")
-            if (text.isEmpty()) return@flatMap emptyList()
-
-            text.lineSequence().mapIndexedNotNull { index, line ->
-                val isUsage = line.contains(commandName) || line.contains("VdcActionType.$actionTypeName")
-                if (isUsage) UsageLocation(file.path, index + 1, line.trim()) else null
-            }.toList()
-        }.toSet()
     }
 
     private fun isCommandClass(psiClass: PsiClass): Boolean {
