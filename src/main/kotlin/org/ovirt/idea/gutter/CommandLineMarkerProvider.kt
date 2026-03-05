@@ -3,7 +3,6 @@ package org.ovirt.idea.gutter
 import com.intellij.codeInsight.daemon.LineMarkerInfo
 import com.intellij.codeInsight.daemon.LineMarkerProvider
 import com.intellij.codeInsight.navigation.NavigationGutterIconBuilder
-import com.intellij.icons.AllIcons
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.DumbService
 import com.intellij.openapi.vfs.LocalFileSystem
@@ -15,6 +14,7 @@ import com.intellij.psi.PsiManager
 import com.intellij.psi.PsiReferenceExpression
 import org.ovirt.idea.index.CommandIndexService
 import org.ovirt.idea.model.UsageLocation
+import org.ovirt.idea.ui.OvirtIcons
 
 class CommandLineMarkerProvider : LineMarkerProvider, DumbAware {
 
@@ -37,10 +37,11 @@ class CommandLineMarkerProvider : LineMarkerProvider, DumbAware {
         val command = service.commandByActionName(element.text) ?: return null
         val target = findClassElementByPath(command.filePath, element.project) ?: return null
 
-        val builder = NavigationGutterIconBuilder.create(AllIcons.Gutter.ImplementedMethod)
-            .setTooltipText("Go to command ${command.name}")
+        return NavigationGutterIconBuilder.create(OvirtIcons.Command)
+            .setTooltipText("oVirt-Command-manager: Go to ${command.name}")
+            .setPopupTitle("oVirt command target")
             .setTargets(listOf(target))
-        return builder.createLineMarkerInfo(element)
+            .createLineMarkerInfo(element)
     }
 
     private fun buildCommandMarker(element: PsiIdentifier): LineMarkerInfo<*>? {
@@ -50,25 +51,22 @@ class CommandLineMarkerProvider : LineMarkerProvider, DumbAware {
 
         val service = CommandIndexService.getInstance(element.project)
         val command = service.commandByName(className) ?: return null
-        val usageTargets = resolveUsageTargets(command.usages, element.project)
-        if (usageTargets.isEmpty()) return null
+        val usageClasses = resolveUsageClasses(command.usages, element.project)
+        if (usageClasses.isEmpty()) return null
 
-        val builder = NavigationGutterIconBuilder.create(AllIcons.Gutter.OverridenMethod)
-            .setTooltipText("Go to usages of $className")
-            .setTargets(usageTargets)
-        return builder.createLineMarkerInfo(element)
+        return NavigationGutterIconBuilder.create(OvirtIcons.Usage)
+            .setTooltipText("oVirt-Command-manager: Go to call classes of $className")
+            .setPopupTitle("Classes calling $className")
+            .setTargets(usageClasses)
+            .createLineMarkerInfo(element)
     }
 
-    private fun resolveUsageTargets(usages: Set<UsageLocation>, project: com.intellij.openapi.project.Project): List<PsiElement> {
+    private fun resolveUsageClasses(usages: Set<UsageLocation>, project: com.intellij.openapi.project.Project): List<PsiElement> {
         return usages.mapNotNull { usage ->
             val file = LocalFileSystem.getInstance().findFileByPath(usage.filePath) ?: return@mapNotNull null
-            val psiFile = PsiManager.getInstance(project).findFile(file) ?: return@mapNotNull null
-            val document = com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().getDocument(file) ?: return@mapNotNull psiFile
-            val lineIndex = usage.line - 1
-            if (lineIndex !in 0 until document.lineCount) return@mapNotNull psiFile
-            val startOffset = document.getLineStartOffset(lineIndex)
-            psiFile.findElementAt(startOffset) ?: psiFile
-        }.distinctBy { Pair(it.containingFile?.virtualFile?.path, it.textRange?.startOffset ?: -1) }
+            val psiJavaFile = PsiManager.getInstance(project).findFile(file) as? PsiJavaFile ?: return@mapNotNull null
+            psiJavaFile.classes.firstOrNull()?.nameIdentifier ?: psiJavaFile
+        }.distinctBy { it.containingFile?.virtualFile?.path }
     }
 
     private fun findClassElementByPath(path: String, project: com.intellij.openapi.project.Project): PsiElement? {

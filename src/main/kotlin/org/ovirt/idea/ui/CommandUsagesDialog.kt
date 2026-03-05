@@ -17,7 +17,7 @@ class CommandUsagesDialog(
     private val basePath: String?
 ) : DialogWrapper(project) {
 
-    private val tableModel = object : DefaultTableModel(arrayOf("File", "Line", "Code"), 0) {
+    private val tableModel = object : DefaultTableModel(arrayOf("Line", "File", "Code"), 0) {
         override fun isCellEditable(row: Int, column: Int): Boolean = false
     }
 
@@ -25,16 +25,19 @@ class CommandUsagesDialog(
         setStriped(true)
         autoResizeMode = JBTable.AUTO_RESIZE_LAST_COLUMN
         emptyText.text = "No usages found"
+        columnModel.getColumn(0).preferredWidth = 70
+        columnModel.getColumn(0).maxWidth = 90
+        columnModel.getColumn(1).preferredWidth = 420
     }
 
     init {
-        title = "Usages: $commandName"
-        setSize(1200, 700)
+        title = "oVirt-Command-manager: Usages of $commandName"
+        setSize(1280, 760)
         usages.forEach { usage ->
             tableModel.addRow(
                 arrayOf(
-                    toDisplayPath(usage.filePath),
                     usage.line,
+                    toDisplayPath(usage.filePath),
                     usage.preview
                 )
             )
@@ -49,7 +52,10 @@ class CommandUsagesDialog(
     }
 
     private fun toDisplayPath(fullPath: String): String {
-        if (basePath.isNullOrBlank()) return fullPath
-        return if (fullPath.startsWith(basePath)) fullPath.removePrefix(basePath).trimStart('/') else fullPath
+        if (!basePath.isNullOrBlank() && fullPath.startsWith(basePath)) {
+            return fullPath.removePrefix(basePath).trimStart('/')
+        }
+        val srcIndex = fullPath.indexOf("/src/")
+        return if (srcIndex >= 0) fullPath.substring(srcIndex + 1) else fullPath
     }
 }

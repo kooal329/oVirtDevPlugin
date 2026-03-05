@@ -73,7 +73,7 @@ class CommandIndexService(private val project: Project) {
         val psiClass = psiFile.classes.firstOrNull() ?: return null
         val text = psiFile.text
 
-        val called = runInternalActionRegex.findAll(text)
+        val called = actionCallRegex.findAll(text)
             .mapNotNull { it.groupValues.getOrNull(1) }
             .map { it.removeSuffix("Command") + "Command" }
             .toSet()
@@ -82,7 +82,7 @@ class CommandIndexService(private val project: Project) {
             name = psiClass.name ?: return null,
             qualifiedName = psiClass.qualifiedName ?: psiClass.name ?: return null,
             filePath = file.path,
-            parametersClass = commandParametersRegex.find(text)?.groupValues?.getOrNull(1),
+            parametersClass = extractParametersClass(text),
             calledCommands = called,
             superClassName = extractSuperClassName(text)
         )
@@ -90,9 +90,10 @@ class CommandIndexService(private val project: Project) {
 
     private fun resolveCommandClassNames(seeds: List<CommandSeed>): Set<String> {
         val result = mutableSetOf<String>()
+        val baseNames = setOf("CommandBase", "VdsCommand", "VDSCommand", "CommandBaseWithScope")
 
         seeds.forEach { seed ->
-            if (seed.superClassName?.contains("CommandBase") == true) {
+            if (seed.superClassName in baseNames || seed.superClassName?.contains("CommandBase") == true) {
                 result.add(seed.name)
             }
         }
@@ -120,6 +121,13 @@ class CommandIndexService(private val project: Project) {
         return noGenerics.substringAfterLast('.')
     }
 
+    private fun extractParametersClass(text: String): String? {
+        val extendsToken = classExtendsRegex.find(text)?.groupValues?.getOrNull(1) ?: return null
+        val genericToken = extendsToken.substringAfter('<', "").substringBeforeLast('>', "").trim()
+        if (genericToken.isBlank()) return null
+        return genericToken.substringAfterLast('.').substringAfterLast('?').trim()
+    }
+
     private fun collectUsagesForCommand(commandName: String, commandFilePath: String): Set<UsageLocation> {
         return ReadAction.compute<Set<UsageLocation>, RuntimeException> {
             val scope = GlobalSearchScope.projectScope(project)
@@ -145,11 +153,7 @@ class CommandIndexService(private val project: Project) {
         }
     }
 
-    private fun collectUsagesForWord(
-        word: String,
-        scope: GlobalSearchScope,
-        onLocation: (UsageLocation) -> Unit
-    ) {
+    private fun collectUsagesForWord(word: String, scope: GlobalSearchScope, onLocation: (UsageLocation) -> Unit) {
         if (word.isBlank()) return
 
         val searchHelper = PsiSearchHelper.getInstance(project)
@@ -181,12 +185,10 @@ class CommandIndexService(private val project: Project) {
     )
 
     companion object {
-        private val runInternalActionRegex =
-            Regex("runInternalAction\\s*\\(\\s*VdcActionType\\.([A-Za-z0-9_]+)")
-        private val commandParametersRegex =
-            Regex("extends\\s+CommandBase\\s*<\\s*([A-Za-z0-9_]+)\\s*>")
+        private val actionCallRegex =
+            Regex("(?:runInternalAction\\s*\\(\\s*)?(?:VdcActionType|ActionType)\\.([A-Za-z0-9_]+)")
         private val classExtendsRegex =
-            Regex("class\\s+[A-Za-z0-9_]+(?:\\s*<[^>]+>)?\\s+extends\\s+([A-Za-z0-9_$.<>]+)")
+            Regex("class\\s+[A-Za-z0-9_]+(?:\\s*<[^>]+>)?\\s+extends\\s+([A-Za-z0-9_$.<>?,\\s]+)")
 
         fun getInstance(project: Project): CommandIndexService = project.service()
     }

@@ -100,9 +100,7 @@ class CommandGraphPanel(
             .map { it.name }
             .filter { normalized.isEmpty() || it.lowercase().contains(normalized) }
             .forEach { listModel.addElement(it) }
-        if (listModel.size() > 0) {
-            list.selectedIndex = 0
-        }
+        if (listModel.size() > 0) list.selectedIndex = 0
     }
 
     private fun renderCommand(commandName: String?) {
@@ -118,11 +116,13 @@ class CommandGraphPanel(
     }
 
     private fun buildDetailsText(command: CommandInfo): String {
+        val relativePath = toRelativeSrcPath(command.filePath)
         return buildString {
             appendLine("Command: ${command.name}")
             appendLine("Parameters: ${command.parametersClass ?: "n/a"}")
-            appendLine("File: ${command.filePath}")
-            appendLine("Calls (${command.calledCommands.size}):")
+            appendLine("File: $relativePath")
+            appendLine("Direct calls: ${command.calledCommands.size}")
+            appendLine("Calls:")
             if (command.calledCommands.isEmpty()) {
                 appendLine("  - none")
             } else {
@@ -133,6 +133,11 @@ class CommandGraphPanel(
             appendLine(command.name)
             renderNode(command.name, 1, mutableSetOf(), this)
         }
+    }
+
+    private fun toRelativeSrcPath(filePath: String): String {
+        val idx = filePath.indexOf("/src/")
+        return if (idx >= 0) filePath.substring(idx + 1) else filePath
     }
 
     private fun renderNode(commandName: String, depth: Int, seen: MutableSet<String>, out: StringBuilder) {
