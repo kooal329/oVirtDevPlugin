@@ -26,10 +26,14 @@ class CommandIndexService(private val project: Project) {
 
     fun allCommands(): List<CommandInfo> = cachedCommands.value
 
+<<<<<<< codex/analyze-and-fix-project-errors
     fun commandByName(name: String): CommandInfo? {
         val command = allCommands().firstOrNull { it.name == name } ?: return null
         return command.copy(usages = collectUsagesForCommand(command.name))
     }
+=======
+    fun commandByName(name: String): CommandInfo? = allCommands().firstOrNull { it.name == name }
+>>>>>>> main
 
     fun commandsUsingParameters(parameterClass: String): List<CommandInfo> {
         return allCommands().filter { it.parametersClass == parameterClass }
@@ -39,6 +43,7 @@ class CommandIndexService(private val project: Project) {
         val scope = GlobalSearchScope.projectScope(project)
         val javaFiles = FileTypeIndex.getFiles(JavaFileType.INSTANCE, scope)
 
+<<<<<<< codex/analyze-and-fix-project-errors
         return javaFiles.mapNotNull { parseCommandSeed(it) }
             .map { seed ->
                 CommandInfo(
@@ -51,6 +56,25 @@ class CommandIndexService(private val project: Project) {
                 )
             }
             .sortedBy { it.name }
+=======
+        val commandSeeds = javaFiles.mapNotNull { parseCommandSeed(it) }
+        if (commandSeeds.isEmpty()) {
+            return emptyList()
+        }
+
+        val usageMap = collectUsages(javaFiles, commandSeeds)
+
+        return commandSeeds.map { seed ->
+            CommandInfo(
+                name = seed.name,
+                qualifiedName = seed.qualifiedName,
+                filePath = seed.filePath,
+                parametersClass = seed.parametersClass,
+                calledCommands = seed.calledCommands,
+                usages = usageMap[seed.name].orEmpty()
+            )
+        }.sortedBy { it.name }
+>>>>>>> main
     }
 
     private fun parseCommandSeed(file: VirtualFile): CommandSeed? {
@@ -73,6 +97,7 @@ class CommandIndexService(private val project: Project) {
         )
     }
 
+<<<<<<< codex/analyze-and-fix-project-errors
     private fun collectUsagesForCommand(commandName: String): Set<UsageLocation> {
         val scope = GlobalSearchScope.projectScope(project)
         val javaFiles = FileTypeIndex.getFiles(JavaFileType.INSTANCE, scope)
@@ -87,6 +112,39 @@ class CommandIndexService(private val project: Project) {
                 if (isUsage) UsageLocation(file.path, index + 1, line.trim()) else null
             }.toList()
         }.toSet()
+=======
+    private fun collectUsages(
+        javaFiles: Collection<VirtualFile>,
+        seeds: List<CommandSeed>
+    ): Map<String, Set<UsageLocation>> {
+        val actionTypeToCommand = seeds.associateBy { it.name.removeSuffix("Command") }
+        val commandNames = seeds.map { it.name }.toSet()
+        val usages = mutableMapOf<String, MutableSet<UsageLocation>>()
+
+        javaFiles.forEach { file ->
+            val text = runCatching { String(file.contentsToByteArray()) }.getOrDefault("")
+            if (text.isEmpty()) return@forEach
+
+            text.lineSequence().forEachIndexed { index, line ->
+                val lineTrimmed = line.trim()
+                commandNames.forEach { commandName ->
+                    if (line.contains(commandName)) {
+                        usages.getOrPut(commandName) { mutableSetOf() }
+                            .add(UsageLocation(file.path, index + 1, lineTrimmed))
+                    }
+                }
+
+                actionTypeRegex.findAll(line).forEach { match ->
+                    val actionName = match.groupValues[1]
+                    val command = actionTypeToCommand[actionName] ?: return@forEach
+                    usages.getOrPut(command.name) { mutableSetOf() }
+                        .add(UsageLocation(file.path, index + 1, lineTrimmed))
+                }
+            }
+        }
+
+        return usages
+>>>>>>> main
     }
 
     private fun isCommandClass(psiClass: PsiClass): Boolean {
@@ -108,6 +166,7 @@ class CommandIndexService(private val project: Project) {
             Regex("runInternalAction\\s*\\(\\s*VdcActionType\\.([A-Za-z0-9_]+)")
         private val commandParametersRegex =
             Regex("extends\\s+CommandBase\\s*<\\s*([A-Za-z0-9_]+)\\s*>")
+        private val actionTypeRegex = Regex("VdcActionType\\.([A-Za-z0-9_]+)")
 
         fun getInstance(project: Project): CommandIndexService = project.service()
     }
