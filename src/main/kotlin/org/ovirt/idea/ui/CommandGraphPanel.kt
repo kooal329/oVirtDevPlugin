@@ -9,10 +9,10 @@ import com.intellij.ui.components.JBScrollPane
 import org.ovirt.idea.index.CommandIndexService
 import org.ovirt.idea.model.CommandInfo
 import java.awt.BorderLayout
+import java.awt.datatransfer.StringSelection
 import java.awt.event.KeyEvent
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
-import java.awt.datatransfer.StringSelection
 import javax.swing.AbstractAction
 import javax.swing.DefaultListModel
 import javax.swing.JEditorPane
@@ -54,6 +54,12 @@ class CommandGraphPanel(
                 openCommand(commandName)
             }
         }
+        val command = commandMap[commandName] ?: run {
+            details.text = "<html><body>Command not found: $commandName</body></html>"
+            return
+        }
+        details.text = buildDetailsHtml(command)
+    }
 
         list.addListSelectionListener {
             if (!it.valueIsAdjusting) renderCommand(list.selectedValue)
@@ -93,7 +99,8 @@ class CommandGraphPanel(
     private fun refreshList(filter: String) {
         val normalized = filter.trim().lowercase()
         listModel.removeAllElements()
-        commands.asSequence().map { it.name }
+        commands.asSequence()
+            .map { it.name }
             .filter { normalized.isEmpty() || it.lowercase().contains(normalized) }
             .forEach { listModel.addElement(it) }
         if (listModel.size() > 0) list.selectedIndex = 0
@@ -105,34 +112,20 @@ class CommandGraphPanel(
             return
         }
         val command = commandMap[commandName] ?: run {
-            details.text = "<html><body>Command not found: $commandName</body></html>"
+            details.text = "<html><body>Command not found: ${escape(commandName)}</body></html>"
             return
         }
         details.text = buildDetailsHtml(command)
     }
 
     private fun buildDetailsHtml(command: CommandInfo): String {
-        val graphLines = mutableListOf<String>()
-        graphLines += escape(command.name)
-        renderNode(
-            commandName = command.name,
-            depth = 1,
-            currentPath = mutableListOf(command.name),
-            globallyRendered = mutableSetOf(command.name),
-            graphLines = graphLines,
-            budget = NodeBudget(MAX_GRAPH_LINES)
-        )
+        val graphLines = mutableListOf(escape(command.name))
+        renderGraphNode(command.name, 1, mutableListOf(command.name), mutableSetOf(command.name), graphLines, NodeBudget(MAX_GRAPH_LINES))
 
-        val calls = if (command.calledCommands.isEmpty()) {
+        val callsHtml = if (command.calledCommands.isEmpty()) {
             "<li><i>none</i></li>"
         } else {
-            command.calledCommands.sorted().joinToString("") { called ->
-                "<li>${link(called)}</li>"
-            }
-            appendLine()
-            appendLine("Call Graph (cycle-safe):")
-            appendLine(command.name)
-            renderNode(command.name, 1, mutableListOf(command.name), this)
+            command.calledCommands.sorted().joinToString("") { called -> "<li>${link(called)}</li>" }
         }
 
         return """
@@ -143,14 +136,14 @@ class CommandGraphPanel(
                <b>File:</b> ${escape(toRelativeSrcPath(command.filePath))}<br/>
                <b>Direct calls:</b> ${command.calledCommands.size}</p>
             <h3>Calls</h3>
-            <ul>$calls</ul>
+            <ul>$callsHtml</ul>
             <h3>Call Graph (cycle-safe, capped)</h3>
             <pre>${graphLines.joinToString("\n")}</pre>
             </body></html>
         """.trimIndent()
     }
 
-    private fun renderNode(
+    private fun renderGraphNode(
         commandName: String,
         depth: Int,
         currentPath: MutableList<String>,
@@ -175,7 +168,7 @@ class CommandGraphPanel(
                     graphLines += "$prefix${link(called)}"
                     currentPath += called
                     globallyRendered += called
-                    renderNode(called, depth + 1, currentPath, globallyRendered, graphLines, budget)
+                    renderGraphNode(called, depth + 1, currentPath, globallyRendered, graphLines, budget)
                     currentPath.removeAt(currentPath.lastIndex)
                 }
             }
