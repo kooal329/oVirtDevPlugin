@@ -4,6 +4,7 @@ import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.ui.Messages
 import org.ovirt.idea.index.CommandIndexService
+import org.ovirt.idea.ui.CommandUsagesDialog
 
 class ShowCommandUsagesAction : AnAction() {
     override fun actionPerformed(e: AnActionEvent) {
@@ -13,18 +14,33 @@ class ShowCommandUsagesAction : AnAction() {
             return
         }
 
-        val command = CommandIndexService.getInstance(project).commandByName(commandName)
-        if (command == null) {
-            Messages.showInfoMessage(project, "Selected class is not indexed as command", "oVirt Commands")
-            return
-        }
+        runInBackground(
+            project = project,
+            title = "Searching command usages",
+            compute = { CommandIndexService.getInstance(project).commandByName(commandName) },
+            onDone = onDone@{ command ->
+                if (command == null) {
+                    Messages.showInfoMessage(project, "Selected class is not indexed as command", "oVirt Commands")
+                    return@onDone
+                }
 
-        val message = buildString {
-            append("$commandName используется в:\n\n")
-            command.usages.sortedBy { it.filePath }.forEach {
-                append("${it.filePath}:${it.line}\n")
+                val usages = command.usages
+                    .mapNotNull { usage ->
+                        runCatching {
+                            usage.filePath
+                            usage
+                        }.getOrNull()
+                    }
+                    .distinctBy { Triple(it.filePath, it.line, it.preview) }
+                    .sortedWith(compareBy({ it.filePath }, { it.line }))
+
+                if (usages.isEmpty()) {
+                    Messages.showInfoMessage(project, "Usages not found for $commandName", "Show Command Usages")
+                    return@onDone
+                }
+
+                CommandUsagesDialog(project, commandName, usages, project.basePath).show()
             }
-        }
-        Messages.showInfoMessage(project, message, "Show Command Usages")
+        )
     }
 }
