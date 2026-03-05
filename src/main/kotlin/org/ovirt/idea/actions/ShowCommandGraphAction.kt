@@ -16,11 +16,13 @@ class ShowCommandGraphAction : AnAction() {
             title = "Building command graph",
             compute = { CommandGraphPanel(project, CommandIndexService.getInstance(project), commandName) },
             onDone = { panel ->
-                val toolWindow = ToolWindowManager.getInstance(project).getToolWindow("oVirt Commands") ?: return@onDone
-                toolWindow.show()
-                toolWindow.contentManager.removeAllContents(true)
-                val content = toolWindow.contentManager.factory.createContent(panel, "Command Graph", false)
-                toolWindow.contentManager.addContent(content)
+                val toolWindow = ToolWindowManager.getInstance(project).getToolWindow("oVirt Commands")
+                if (toolWindow != null) {
+                    toolWindow.show()
+                    toolWindow.contentManager.removeAllContents(true)
+                    val content = toolWindow.contentManager.factory.createContent(panel, "Command Graph", false)
+                    toolWindow.contentManager.addContent(content)
+                }
             }
         )
     }
