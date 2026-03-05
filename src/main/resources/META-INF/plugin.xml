@@ -1,0 +1,61 @@
+<idea-plugin>
+    <id>org.ovirt.idea.command.explorer</id>
+    <name>oVirt Command Explorer</name>
+    <vendor email="dev@ovirt.org">oVirt</vendor>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.java</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <projectService serviceImplementation="org.ovirt.idea.index.CommandIndexService"/>
+        <toolWindow
+                id="oVirt Commands"
+                anchor="right"
+                factoryClass="org.ovirt.idea.ui.CommandToolWindowFactory"
+                icon="AllIcons.Toolwindows.ToolWindowStructure"/>
+    </extensions>
+
+    <actions>
+        <group id="oVirt.CommandActions" text="oVirt Commands" popup="true">
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+            <action id="oVirt.ShowCommandUsages"
+                    class="org.ovirt.idea.actions.ShowCommandUsagesAction"
+                    text="Show Command Usages"
+                    description="Show all usages of the selected oVirt command"/>
+            <action id="oVirt.ShowCommandGraph"
+                    class="org.ovirt.idea.actions.ShowCommandGraphAction"
+                    text="Show Command Call Graph"
+                    description="Show command call chain as a dependency graph"/>
+            <action id="oVirt.ShowParameterConsumers"
+                    class="org.ovirt.idea.actions.ShowParameterConsumersAction"
+                    text="Show Parameter Consumers"
+                    description="Show commands that use selected parameter class"/>
+        </group>
+
+        <action id="oVirt.NewCommandWizard"
+                class="org.ovirt.idea.wizard.NewOvirtCommandAction"
+                text="oVirt Command"
+                description="Generate oVirt command and parameters classes">
+            <add-to-group group-id="NewGroup" anchor="last"/>
+        </action>
+
+        <action id="oVirt.FindCommand"
+                class="org.ovirt.idea.actions.QuickFindCommandAction"
+                text="Find oVirt Command"
+                description="Find indexed oVirt command by name">
+            <keyboard-shortcut keymap="$default" first-keystroke="meta shift C"/>
+            <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta shift C"/>
+            <keyboard-shortcut keymap="Default for XWin" first-keystroke="ctrl shift C"/>
+        </action>
+
+        <action id="oVirt.OpenGraph"
+                class="org.ovirt.idea.actions.ShowCommandGraphAction"
+                text="Open oVirt Graph"
+                description="Open command dependency graph">
+            <keyboard-shortcut keymap="$default" first-keystroke="meta shift G"/>
+            <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta shift G"/>
+            <keyboard-shortcut keymap="Default for XWin" first-keystroke="ctrl shift G"/>
+        </action>
+    </actions>
+</idea-plugin>
