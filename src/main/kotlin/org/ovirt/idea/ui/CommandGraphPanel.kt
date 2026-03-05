@@ -54,6 +54,12 @@ class CommandGraphPanel(
                 openCommand(commandName)
             }
         }
+        val command = commandMap[commandName] ?: run {
+            details.text = "<html><body>Command not found: $commandName</body></html>"
+            return
+        }
+        details.text = buildDetailsHtml(command)
+    }
 
         list.addListSelectionListener {
             if (!it.valueIsAdjusting) renderCommand(list.selectedValue)
