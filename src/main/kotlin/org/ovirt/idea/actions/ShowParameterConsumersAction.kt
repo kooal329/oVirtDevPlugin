@@ -13,15 +13,18 @@ class ShowParameterConsumersAction : AnAction() {
         val psiFile = e.getData(CommonDataKeys.PSI_FILE) as? PsiJavaFile ?: return
         val parameterName = psiFile.classes.firstOrNull()?.name ?: return
 
-        val commands = CommandIndexService.getInstance(project).commandsUsingParameters(parameterName)
-        val message = if (commands.isEmpty()) {
-            "Не найдено команд для параметров $parameterName"
-        } else {
-            buildString {
-                append("Used by:\n")
-                commands.forEach { append(" - ${it.name}\n") }
+        runInBackground(project, "Searching parameter consumers") {
+            CommandIndexService.getInstance(project).commandsUsingParameters(parameterName)
+        } onDone@{ commands ->
+            val message = if (commands.isEmpty()) {
+                "Не найдено команд для параметров $parameterName"
+            } else {
+                buildString {
+                    append("Used by:\n")
+                    commands.forEach { append(" - ${it.name}\n") }
+                }
             }
+            Messages.showInfoMessage(project, message, "Parameter Consumers")
         }
-        Messages.showInfoMessage(project, message, "Parameter Consumers")
     }
 }

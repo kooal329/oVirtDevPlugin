@@ -1,35 +1,61 @@
 package org.ovirt.idea.index
 
+import com.intellij.ide.highlighter.JavaFileType
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiClass
-import com.intellij.psi.search.FilenameIndex
-import com.intellij.psi.search.GlobalSearchScope
+import com.intellij.psi.PsiJavaFile
+import com.intellij.psi.PsiManager
 import com.intellij.psi.search.FileTypeIndex
+import com.intellij.psi.search.GlobalSearchScope
+import com.intellij.psi.util.CachedValue
+import com.intellij.psi.util.CachedValueProvider
+import com.intellij.psi.util.CachedValuesManager
+import com.intellij.psi.util.PsiModificationTracker
 import org.ovirt.idea.model.CommandInfo
 import org.ovirt.idea.model.UsageLocation
 
 @Service(Service.Level.PROJECT)
 class CommandIndexService(private val project: Project) {
 
-    fun allCommands(): List<CommandInfo> {
-        val scope = GlobalSearchScope.projectScope(project)
-        val javaFiles = FileTypeIndex.getFiles(com.intellij.ide.highlighter.JavaFileType.INSTANCE, scope)
-
-        return javaFiles.mapNotNull { parseCommandInfo(it) }.sortedBy { it.name }
+    private val cachedCommands: CachedValue<List<CommandInfo>> = CachedValuesManager.getManager(project).createCachedValue {
+        CachedValueProvider.Result.create(buildCommandIndex(), PsiModificationTracker.MODIFICATION_COUNT)
     }
 
-    fun commandByName(name: String): CommandInfo? = allCommands().firstOrNull { it.name == name }
+    fun allCommands(): List<CommandInfo> = cachedCommands.value
+
+    fun commandByName(name: String): CommandInfo? {
+        val command = allCommands().firstOrNull { it.name == name } ?: return null
+        return command.copy(usages = collectUsagesForCommand(command.name))
+    }
 
     fun commandsUsingParameters(parameterClass: String): List<CommandInfo> {
         return allCommands().filter { it.parametersClass == parameterClass }
     }
 
-    private fun parseCommandInfo(file: VirtualFile): CommandInfo? {
-        val psiFile = com.intellij.psi.PsiManager.getInstance(project).findFile(file) ?: return null
-        val psiClass = (psiFile as? com.intellij.psi.PsiJavaFile)?.classes?.firstOrNull() ?: return null
+    private fun buildCommandIndex(): List<CommandInfo> {
+        val scope = GlobalSearchScope.projectScope(project)
+        val javaFiles = FileTypeIndex.getFiles(JavaFileType.INSTANCE, scope)
+
+        return javaFiles.mapNotNull { parseCommandSeed(it) }
+            .map { seed ->
+                CommandInfo(
+                    name = seed.name,
+                    qualifiedName = seed.qualifiedName,
+                    filePath = seed.filePath,
+                    parametersClass = seed.parametersClass,
+                    calledCommands = seed.calledCommands,
+                    usages = emptySet()
+                )
+            }
+            .sortedBy { it.name }
+    }
+
+    private fun parseCommandSeed(file: VirtualFile): CommandSeed? {
+        val psiFile = PsiManager.getInstance(project).findFile(file) as? PsiJavaFile ?: return null
+        val psiClass = psiFile.classes.firstOrNull() ?: return null
         if (!isCommandClass(psiClass)) return null
 
         val text = psiFile.text
@@ -38,31 +64,28 @@ class CommandIndexService(private val project: Project) {
             .map { it.removeSuffix("Command") + "Command" }
             .toSet()
 
-        val params = commandParametersRegex.find(text)?.groupValues?.getOrNull(1)
-        val usages = collectUsages(psiClass.name ?: return null)
-
-        return CommandInfo(
+        return CommandSeed(
             name = psiClass.name ?: return null,
             qualifiedName = psiClass.qualifiedName ?: psiClass.name ?: return null,
             filePath = file.path,
-            parametersClass = params,
-            calledCommands = called,
-            usages = usages
+            parametersClass = commandParametersRegex.find(text)?.groupValues?.getOrNull(1),
+            calledCommands = called
         )
     }
 
-    private fun collectUsages(commandName: String): Set<UsageLocation> {
+    private fun collectUsagesForCommand(commandName: String): Set<UsageLocation> {
         val scope = GlobalSearchScope.projectScope(project)
-        val files = FilenameIndex.getAllFilesByExt(project, "java", scope)
-        return files.flatMap { file ->
-            val text = String(file.contentsToByteArray())
-            text.lineSequence().mapIndexedNotNull { idx, line ->
-                if (line.contains(commandName) || line.contains("VdcActionType.${commandName.removeSuffix("Command")}")) {
-                    UsageLocation(file.path, idx + 1, line.trim())
-                } else {
-                    null
-                }
-            }
+        val javaFiles = FileTypeIndex.getFiles(JavaFileType.INSTANCE, scope)
+        val actionTypeName = commandName.removeSuffix("Command")
+
+        return javaFiles.flatMap { file ->
+            val text = runCatching { String(file.contentsToByteArray()) }.getOrDefault("")
+            if (text.isEmpty()) return@flatMap emptyList()
+
+            text.lineSequence().mapIndexedNotNull { index, line ->
+                val isUsage = line.contains(commandName) || line.contains("VdcActionType.$actionTypeName")
+                if (isUsage) UsageLocation(file.path, index + 1, line.trim()) else null
+            }.toList()
         }.toSet()
     }
 
@@ -71,6 +94,14 @@ class CommandIndexService(private val project: Project) {
             it.name?.contains("CommandBase") == true || it.qualifiedName?.contains("CommandBase") == true
         }
     }
+
+    private data class CommandSeed(
+        val name: String,
+        val qualifiedName: String,
+        val filePath: String,
+        val parametersClass: String?,
+        val calledCommands: Set<String>
+    )
 
     companion object {
         private val runInternalActionRegex =
