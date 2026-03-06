@@ -34,7 +34,7 @@ class CommandLineMarkerProvider : LineMarkerProvider, DumbAware {
         if (qualifierText != "VdcActionType" && qualifierText != "ActionType" && qualifierText != "VDSCommandType") return null
 
         val service = CommandIndexService.getInstance(element.project)
-        val command = service.commandByActionName(element.text) ?: return null
+        val command = service.commandByActionName(element.text, qualifierText) ?: return null
         val target = findClassElementByPath(command.filePath, element.project) ?: return null
 
         return NavigationGutterIconBuilder.create(OvirtIcons.Command)

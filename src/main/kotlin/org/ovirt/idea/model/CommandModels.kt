@@ -6,7 +6,8 @@ data class CommandInfo(
     val filePath: String,
     val parametersClass: String?,
     val calledCommands: Set<String>,
-    val usages: Set<UsageLocation>
+    val usages: Set<UsageLocation>,
+    val isVdsCommand: Boolean = false
 )
 
 data class UsageLocation(
