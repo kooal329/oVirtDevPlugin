@@ -65,7 +65,9 @@ class CommandIndexService(private val project: Project) {
         val seeds = javaFiles.mapNotNull { parseCommandSeed(it) }
         if (seeds.isEmpty()) return emptyList()
 
-        val commandSeeds = seeds.filter { it.isCommand }
+        val hierarchy = CommandHierarchy(seeds)
+
+        val commandSeeds = seeds.filter { hierarchy.isCommand(it.name) }
         val actionToCommand = buildActionToCommandMap(commandSeeds)
 
         return commandSeeds.map { seed ->
@@ -80,7 +82,7 @@ class CommandIndexService(private val project: Project) {
                 parametersClass = seed.parametersClass,
                 calledCommands = resolvedCalls,
                 usages = emptySet(),
-                isVdsCommand = seed.isVdsCommand
+                isVdsCommand = hierarchy.isVdsCommand(seed.name)
             )
         }.sortedBy { it.name }
     }
@@ -240,6 +242,52 @@ class CommandIndexService(private val project: Project) {
         val regular: Map<String, String>,
         val vds: Map<String, String>
     )
+
+    private class CommandHierarchy(seeds: List<CommandSeed>) {
+        private val byName = seeds.associateBy { it.name }
+        private val isCommandCache = mutableMapOf<String, Boolean>()
+        private val isVdsCache = mutableMapOf<String, Boolean>()
+
+        fun isCommand(name: String): Boolean =
+            classify(name, commandMarkers, isCommandCache) { seed -> seed.isCommand }
+
+        fun isVdsCommand(name: String): Boolean =
+            classify(name, vdsMarkers, isVdsCache) { seed -> seed.isVdsCommand }
+
+        private fun classify(
+            name: String,
+            markers: Set<String>,
+            cache: MutableMap<String, Boolean>,
+            fallback: (CommandSeed) -> Boolean
+        ): Boolean {
+            return cache.getOrPut(name) { classify(name, markers, fallback, mutableSetOf()) }
+        }
+
+        private fun classify(
+            name: String,
+            markers: Set<String>,
+            fallback: (CommandSeed) -> Boolean,
+            visiting: MutableSet<String>
+        ): Boolean {
+            if (!visiting.add(name)) return false
+            val seed = byName[name] ?: return false
+            if (fallback(seed)) return true
+
+            val superName = seed.superClassName ?: return false
+            if (matchesMarker(superName, markers)) return true
+
+            val parent = byName[superName] ?: return false
+            return classify(parent.name, markers, fallback, visiting)
+        }
+
+        private fun matchesMarker(name: String, markers: Set<String>): Boolean =
+            markers.any { marker -> name == marker || name.endsWith(".$marker") }
+
+        companion object {
+            private val commandMarkers = setOf("CommandBase", "CommandBaseWithScope", "VdsCommand", "VDSCommand", "VDSCommandBase")
+            private val vdsMarkers = setOf("VDSCommandBase", "VDSCommand", "VdsCommand")
+        }
+    }
 
     companion object {
         private val actionCallRegex =
