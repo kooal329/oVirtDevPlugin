@@ -31,7 +31,7 @@ class CommandLineMarkerProvider : LineMarkerProvider, DumbAware {
     private fun buildCallSiteMarker(element: PsiIdentifier): LineMarkerInfo<*>? {
         val referenceExpression = element.parent as? PsiReferenceExpression ?: return null
         val qualifierText = referenceExpression.qualifierExpression?.text ?: return null
-        if (qualifierText != "VdcActionType" && qualifierText != "ActionType" && qualifierText != "VDSCommandType") return null
+        if (qualifierText != "VdcActionType" && qualifierText != "ActionType" && qualifierText != "VDSCommandType" && qualifierText != "VdsCommandType") return null
 
         val service = CommandIndexService.getInstance(element.project)
         val command = service.commandByActionName(element.text, qualifierText) ?: return null
@@ -47,7 +47,7 @@ class CommandLineMarkerProvider : LineMarkerProvider, DumbAware {
     private fun buildCommandMarker(element: PsiIdentifier): LineMarkerInfo<*>? {
         val psiClass = element.parent as? PsiClass ?: return null
         val className = psiClass.name ?: return null
-        if (!className.endsWith("Command")) return null
+        if (!className.endsWith("Command") && !className.endsWith("VDSCommand") && !className.endsWith("VdsCommand")) return null
 
         val service = CommandIndexService.getInstance(element.project)
         val command = service.commandByName(className) ?: return null

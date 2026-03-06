@@ -11,6 +11,7 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiJavaFile
 import com.intellij.psi.PsiManager
+import com.intellij.psi.PsiClass
 import com.intellij.psi.search.FileTypeIndex
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.search.PsiSearchHelper
@@ -64,9 +65,7 @@ class CommandIndexService(private val project: Project) {
         val seeds = javaFiles.mapNotNull { parseCommandSeed(it) }
         if (seeds.isEmpty()) return emptyList()
 
-        val commandNames = resolveCommandClassNames(seeds)
-        val vdsNames = resolveVdsCommandNames(seeds)
-        val commandSeeds = seeds.filter { it.name in commandNames }
+        val commandSeeds = seeds.filter { it.isCommand }
         val actionToCommand = buildActionToCommandMap(commandSeeds)
 
         return commandSeeds.map { seed ->
@@ -81,7 +80,7 @@ class CommandIndexService(private val project: Project) {
                 parametersClass = seed.parametersClass,
                 calledCommands = resolvedCalls,
                 usages = emptySet(),
-                isVdsCommand = seed.name in vdsNames
+                isVdsCommand = seed.isVdsCommand
             )
         }.sortedBy { it.name }
     }
@@ -111,62 +110,41 @@ class CommandIndexService(private val project: Project) {
             filePath = file.path,
             parametersClass = extractParametersClass(text),
             calledActions = calledActions,
-            superClassName = extractSuperClassName(text)
+            superClassName = extractSuperClassName(text),
+            isCommand = isCommandClass(psiClass),
+            isVdsCommand = isVdsCommandClass(psiClass)
         )
     }
 
-    private fun resolveCommandClassNames(seeds: List<CommandSeed>): Set<String> {
-        val result = mutableSetOf<String>()
-        val baseNames = setOf("CommandBase", "VdsCommand", "VDSCommand", "CommandBaseWithScope")
-
-        seeds.forEach { seed ->
-            if (seed.superClassName in baseNames || seed.superClassName?.contains("CommandBase") == true || seed.superClassName?.contains("VDSCommand") == true || seed.superClassName?.contains("VdsCommand") == true) {
-                result.add(seed.name)
-            }
-        }
-
-        var changed = true
-        while (changed) {
-            changed = false
-            seeds.forEach { seed ->
-                if (seed.name in result) return@forEach
-                val superName = seed.superClassName ?: return@forEach
-                if (superName in result && result.add(seed.name)) changed = true
-            }
-        }
-
-        return result
+    private fun isCommandClass(psiClass: PsiClass): Boolean {
+        val markers = setOf("CommandBase", "CommandBaseWithScope", "VdsCommand", "VDSCommand", "VDSCommandBase")
+        return inheritsFrom(psiClass, markers)
     }
 
-    private fun resolveVdsCommandNames(seeds: List<CommandSeed>): Set<String> {
-        val result = mutableSetOf<String>()
-        seeds.forEach { seed ->
-            val superName = seed.superClassName ?: ""
-            if (superName.contains("VDSCommand") || superName.contains("VdsCommand") || seed.name.contains("VDSCommand") || seed.name.contains("VdsCommand")) {
-                result.add(seed.name)
-            }
-        }
+    private fun isVdsCommandClass(psiClass: PsiClass): Boolean {
+        val markers = setOf("VDSCommandBase", "VDSCommand", "VdsCommand")
+        return inheritsFrom(psiClass, markers)
+    }
 
-        var changed = true
-        while (changed) {
-            changed = false
-            seeds.forEach { seed ->
-                if (seed.name in result) return@forEach
-                val superName = seed.superClassName ?: return@forEach
-                if (superName in result && result.add(seed.name)) changed = true
+    private fun inheritsFrom(psiClass: PsiClass, markers: Set<String>): Boolean {
+        var current = psiClass.superClass
+        while (current != null) {
+            val namesToCheck = listOfNotNull(current.name, current.qualifiedName)
+            if (namesToCheck.any { name -> markers.any { marker -> name == marker || name.endsWith(".$marker") } }) {
+                return true
             }
+            current = current.superClass
         }
-        return result
+        return false
     }
 
     private fun buildActionToCommandMap(seeds: List<CommandSeed>): ActionToCommandMap {
         val regular = mutableMapOf<String, String>()
         val vds = mutableMapOf<String, String>()
 
-        val vdsNames = resolveVdsCommandNames(seeds)
         seeds.forEach { seed ->
             val base = seed.name.removeSuffix("Command").removeSuffix("VDSCommand").removeSuffix("VdsCommand")
-            val target = if (seed.name in vdsNames) vds else regular
+            val target = if (seed.isVdsCommand) vds else regular
             target[base] = seed.name
             target["${base}Command"] = seed.name
             target["${base}VDSCommand"] = seed.name
@@ -247,7 +225,9 @@ class CommandIndexService(private val project: Project) {
         val filePath: String,
         val parametersClass: String?,
         val calledActions: Set<ActionCallRef>,
-        val superClassName: String?
+        val superClassName: String?,
+        val isCommand: Boolean,
+        val isVdsCommand: Boolean
     )
 
     private data class ActionCallRef(
