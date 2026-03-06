@@ -40,12 +40,13 @@ class CommandIndexService(private val project: Project) {
     fun commandByActionName(actionName: String, qualifier: String? = null): CommandInfo? {
         val commands = allCommands()
         val preferVds = qualifier == "VdsCommandType" || qualifier == "VDSCommandType"
+        val baseName = commandBaseName(actionName)
 
         val candidates = listOf(
             actionName,
-            "${actionName.removeSuffix("Command")}Command",
-            "${actionName.removeSuffix("VDSCommand")}VDSCommand",
-            "${actionName.removeSuffix("VdsCommand")}VdsCommand"
+            "${baseName}Command",
+            "${baseName}VDSCommand",
+            "${baseName}VdsCommand"
         ).distinct()
 
         val primary = candidates.firstNotNullOfOrNull { candidate ->
@@ -145,7 +146,7 @@ class CommandIndexService(private val project: Project) {
         val vds = mutableMapOf<String, String>()
 
         seeds.forEach { seed ->
-            val base = seed.name.removeSuffix("Command").removeSuffix("VDSCommand").removeSuffix("VdsCommand")
+            val base = commandBaseName(seed.name)
             val target = if (seed.isVdsCommand) vds else regular
             target[base] = seed.name
             target["${base}Command"] = seed.name
@@ -155,6 +156,15 @@ class CommandIndexService(private val project: Project) {
         }
         return ActionToCommandMap(regular, vds)
     }
+
+
+    private fun commandBaseName(name: String): String =
+        when {
+            name.endsWith("VDSCommand") -> name.removeSuffix("VDSCommand")
+            name.endsWith("VdsCommand") -> name.removeSuffix("VdsCommand")
+            name.endsWith("Command") -> name.removeSuffix("Command")
+            else -> name
+        }
 
     private fun guessCommandName(action: String, vds: Boolean): String {
         if (action.endsWith("Command") || action.endsWith("VDSCommand") || action.endsWith("VdsCommand")) return action
@@ -188,7 +198,7 @@ class CommandIndexService(private val project: Project) {
         return ReadAction.compute<Set<UsageLocation>, RuntimeException> {
             val scope = GlobalSearchScope.projectScope(project)
             val results = LinkedHashSet<UsageLocation>()
-            val actionName = commandName.removeSuffix("Command").removeSuffix("VDSCommand").removeSuffix("VdsCommand")
+            val actionName = commandBaseName(commandName)
             collectUsagesForWord(actionName, scope) { location ->
                 if (location.filePath == commandFilePath) return@collectUsagesForWord
                 val p = location.preview
