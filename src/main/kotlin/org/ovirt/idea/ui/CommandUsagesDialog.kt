@@ -17,6 +17,7 @@ import javax.swing.JScrollPane
 import javax.swing.RowSorter
 import javax.swing.SortOrder
 import javax.swing.table.DefaultTableModel
+import javax.swing.table.TableRowSorter
 
 class CommandUsagesDialog(
     private val project: Project,
@@ -32,12 +33,12 @@ class CommandUsagesDialog(
     private val table = JBTable(tableModel).apply {
         setStriped(true)
         autoResizeMode = JBTable.AUTO_RESIZE_LAST_COLUMN
+        rowSorter = TableRowSorter(tableModel)
         emptyText.text = "No usages found"
         columnModel.getColumn(0).preferredWidth = 64
         columnModel.getColumn(0).maxWidth = 80
         columnModel.getColumn(1).preferredWidth = 260
         columnModel.getColumn(2).preferredWidth = 420
-        rowSorter.toggleSortOrder(2)
         rowSorter.setSortKeys(listOf(RowSorter.SortKey(2, SortOrder.ASCENDING), RowSorter.SortKey(0, SortOrder.ASCENDING)))
     }
 
